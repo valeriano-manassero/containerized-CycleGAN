@@ -200,13 +200,13 @@ if __name__ == "__main__":
     main_opt.epoch = int(os.getenv('OPTIONS_EPOCH', 0))
     main_opt.n_epochs = int(os.getenv('OPTIONS_N_EPOCHS', 200))
     main_opt.batchSize = int(os.getenv('OPTIONS_BATCHSIZE', 1))
-    main_opt.dataroot = os.getenv('OPTIONS_MODE', '/dataset/')
+    main_opt.dataroot = os.getenv('OPTIONS_DATAROOT', '/dataset/')
     main_opt.lr = float(os.getenv('OPTIONS_LEARNING_RATE', 0.0002))
     main_opt.decay_epoch = int(os.getenv('OPTIONS_DECAY_EPOCH', 100))
     main_opt.size = int(os.getenv('OPTIONS_CROP_SIZE', 256))
     main_opt.input_nc = int(os.getenv('OPTIONS_INPUT_NC', 3))
     main_opt.output_nc = int(os.getenv('OPTIONS_OUTPUT_NC', 3))
-    main_opt.cuda = bool(os.getenv('OPTIONS_MODE', True))
+    main_opt.cuda = bool(os.getenv('OPTIONS_CUDA', 1))
     main_opt.n_cpu = int(os.getenv('OPTIONS_N_CPU', 8))
 
     if torch.cuda.is_available() and not main_opt.cuda:
