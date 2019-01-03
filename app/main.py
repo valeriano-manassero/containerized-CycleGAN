@@ -146,10 +146,10 @@ def train(opt):
         lr_scheduler_d_a.step()
         lr_scheduler_d_b.step()
 
-        torch.save(netg_a2b.state_dict(), 'output/netg_a2b.pth')
-        torch.save(netg_b2a.state_dict(), 'output/netg_b2a.pth')
-        torch.save(netd_a.state_dict(), 'output/netd_a.pth')
-        torch.save(netd_b.state_dict(), 'output/netd_b.pth')
+        torch.save(netg_a2b.state_dict(), '/output/netg_a2b.pth')
+        torch.save(netg_b2a.state_dict(), '/output/netg_b2a.pth')
+        torch.save(netd_a.state_dict(), '/output/netd_a.pth')
+        torch.save(netd_b.state_dict(), '/output/netd_b.pth')
 
 
 def test(opt):
@@ -160,8 +160,8 @@ def test(opt):
         netg_a2b.cuda()
         netg_b2a.cuda()
 
-    netg_a2b.load_state_dict(torch.load(opt.generator_A2B))
-    netg_b2a.load_state_dict(torch.load(opt.generator_B2A))
+    netg_a2b.load_state_dict(torch.load('/output/netg_A2B.pth'))
+    netg_b2a.load_state_dict(torch.load('/output/netg_B2A.pth'))
 
     netg_a2b.eval()
     netg_b2a.eval()
@@ -174,10 +174,10 @@ def test(opt):
     dataloader = DataLoader(ImageDataset(opt.dataroot, transforms_=transforms_, mode='test'), batch_size=opt.batchSize,
                             shuffle=False, num_workers=opt.n_cpu)
 
-    if not os.path.exists('output/A'):
-        os.makedirs('output/A')
-    if not os.path.exists('output/B'):
-        os.makedirs('output/B')
+    if not os.path.exists('/output/A'):
+        os.makedirs('/output/A')
+    if not os.path.exists('/output/B'):
+        os.makedirs('/output/B')
 
     for i, batch in enumerate(dataloader):
         real_a = Variable(input_a.copy_(batch['A']))
@@ -186,8 +186,8 @@ def test(opt):
         fake_b = 0.5*(netg_a2b(real_a).data + 1.0)
         fake_a = 0.5*(netg_b2a(real_b).data + 1.0)
 
-        save_image(fake_a, 'output/A/%04d.png' % (i+1))
-        save_image(fake_b, 'output/B/%04d.png' % (i+1))
+        save_image(fake_a, '/output/A/%04d.png' % (i+1))
+        save_image(fake_b, '/output/B/%04d.png' % (i+1))
 
         sys.stdout.write('\rGenerated images %04d of %04d' % (i+1, len(dataloader)))
 
@@ -208,8 +208,6 @@ if __name__ == "__main__":
     main_opt.output_nc = os.getenv('OPTIONS_OUTPUT_NC', 3)
     main_opt.cuda = os.getenv('OPTIONS_MODE', True)
     main_opt.n_cpu = os.getenv('OPTIONS_N_CPU', 8)
-    main_opt.generator_A2B = os.getenv('OPTIONS_GENERATOR_A2B', '/output/netg_A2B.pth')
-    main_opt.generator_B2A = os.getenv('OPTIONS_GENERATOR_B2A', '/output/netg_B2A.pth')
 
     if torch.cuda.is_available() and not main_opt.cuda:
         print("WARNING: You have a CUDA device, so you should probably run with CUDA=True")

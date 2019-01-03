@@ -11,5 +11,3 @@ class Options:
     output_nc = 3
     cuda = True
     n_cpu = 8
-    generator_A2B = '/output/netG_A2B.pth'
-    generator_B2A = '/output/netG_B2A.pth'
