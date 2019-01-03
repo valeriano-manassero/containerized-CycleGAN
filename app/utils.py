@@ -32,7 +32,7 @@ class Logger:
         self.prev_time = time.time()
 
         sys.stdout.write(
-            '\rEpoch %03d/%03d [%04d/%04d] -- ' % (self.epoch, self.n_epochs, self.batch, self.batches_epoch))
+            '\nEpoch %03d/%03d [%04d/%04d] -- ' % (self.epoch, self.n_epochs, self.batch, self.batches_epoch))
 
         for i, loss_name in enumerate(losses.keys()):
             if loss_name not in self.losses:
