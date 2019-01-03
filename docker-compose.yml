@@ -1,0 +1,7 @@
+version: '3'
+
+services:
+  containerized-cyclegan:
+    image: valerianomanassero/containerized-cyclegan:latest
+    volumes:
+      - .:/opt/project
