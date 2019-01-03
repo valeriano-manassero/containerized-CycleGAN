@@ -4,4 +4,6 @@ services:
   containerized-cyclegan:
     image: valerianomanassero/containerized-cyclegan:latest
     volumes:
-      - .:/opt/project
+      - ./app:/app
+      - ./dataset:/dataset
+      - ./output:/output
