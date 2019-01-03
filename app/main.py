@@ -1,4 +1,3 @@
-import argparse
 import itertools
 
 import os
@@ -10,6 +9,7 @@ from torch.autograd import Variable
 from PIL import Image
 import torch
 
+from options import Options
 from models import Generator
 from models import Discriminator
 from utils import ReplayBuffer
@@ -21,153 +21,158 @@ from torchvision.utils import save_image
 
 
 def train(opt):
-    netG_A2B = Generator(opt.input_nc, opt.output_nc)
-    netG_B2A = Generator(opt.output_nc, opt.input_nc)
-    netD_A = Discriminator(opt.input_nc)
-    netD_B = Discriminator(opt.output_nc)
+    netg_a2b = Generator(opt.input_nc, opt.output_nc)
+    netg_b2a = Generator(opt.output_nc, opt.input_nc)
+    netd_a = Discriminator(opt.input_nc)
+    netd_b = Discriminator(opt.output_nc)
 
     if opt.cuda:
-        netG_A2B.cuda()
-        netG_B2A.cuda()
-        netD_A.cuda()
-        netD_B.cuda()
+        netg_a2b.cuda()
+        netg_b2a.cuda()
+        netd_a.cuda()
+        netd_b.cuda()
 
-    netG_A2B.apply(weights_init_normal)
-    netG_B2A.apply(weights_init_normal)
-    netD_A.apply(weights_init_normal)
-    netD_B.apply(weights_init_normal)
+    netg_a2b.apply(weights_init_normal)
+    netg_b2a.apply(weights_init_normal)
+    netd_a.apply(weights_init_normal)
+    netd_b.apply(weights_init_normal)
 
-    criterion_GAN = torch.nn.MSELoss()
+    criterion_gan = torch.nn.MSELoss()
     criterion_cycle = torch.nn.L1Loss()
     criterion_identity = torch.nn.L1Loss()
 
-    optimizer_G = torch.optim.Adam(itertools.chain(netG_A2B.parameters(), netG_B2A.parameters()), lr=opt.lr,
+    optimizer_g = torch.optim.Adam(itertools.chain(netg_a2b.parameters(), netg_b2a.parameters()), lr=opt.lr,
                                    betas=(0.5, 0.999))
-    optimizer_D_A = torch.optim.Adam(netD_A.parameters(), lr=opt.lr, betas=(0.5, 0.999))
-    optimizer_D_B = torch.optim.Adam(netD_B.parameters(), lr=opt.lr, betas=(0.5, 0.999))
+    optimizer_d_a = torch.optim.Adam(netd_a.parameters(), lr=opt.lr, betas=(0.5, 0.999))
+    optimizer_d_b = torch.optim.Adam(netd_b.parameters(), lr=opt.lr, betas=(0.5, 0.999))
 
-    lr_scheduler_G = torch.optim.lr_scheduler.LambdaLR(optimizer_G,
-                                                       lr_lambda=LambdaLR(opt.n_epochs, opt.epoch, opt.decay_epoch).step)
-    lr_scheduler_D_A = torch.optim.lr_scheduler.LambdaLR(optimizer_D_A,
-                                                         lr_lambda=LambdaLR(opt.n_epochs, opt.epoch, opt.decay_epoch).step)
-    lr_scheduler_D_B = torch.optim.lr_scheduler.LambdaLR(optimizer_D_B,
-                                                         lr_lambda=LambdaLR(opt.n_epochs, opt.epoch, opt.decay_epoch).step)
+    lr_scheduler_g = torch.optim.lr_scheduler.LambdaLR(optimizer_g,
+                                                       lr_lambda=LambdaLR(opt.n_epochs,
+                                                                          opt.epoch,
+                                                                          opt.decay_epoch).step)
+    lr_scheduler_d_a = torch.optim.lr_scheduler.LambdaLR(optimizer_d_a,
+                                                         lr_lambda=LambdaLR(opt.n_epochs,
+                                                                            opt.epoch,
+                                                                            opt.decay_epoch).step)
+    lr_scheduler_d_b = torch.optim.lr_scheduler.LambdaLR(optimizer_d_b,
+                                                         lr_lambda=LambdaLR(opt.n_epochs,
+                                                                            opt.epoch,
+                                                                            opt.decay_epoch).step)
 
-    Tensor = torch.cuda.FloatTensor if opt.cuda else torch.Tensor
-    input_A = Tensor(opt.batchSize, opt.input_nc, opt.size, opt.size)
-    input_B = Tensor(opt.batchSize, opt.output_nc, opt.size, opt.size)
-    target_real = Variable(Tensor(opt.batchSize).fill_(1.0), requires_grad=False)
-    target_fake = Variable(Tensor(opt.batchSize).fill_(0.0), requires_grad=False)
+    tensor = torch.cuda.FloatTensor if opt.cuda else torch.Tensor
+    input_a = tensor(opt.batchSize, opt.input_nc, opt.size, opt.size)
+    input_b = tensor(opt.batchSize, opt.output_nc, opt.size, opt.size)
+    target_real = Variable(tensor(opt.batchSize).fill_(1.0), requires_grad=False)
+    target_fake = Variable(tensor(opt.batchSize).fill_(0.0), requires_grad=False)
 
-    fake_A_buffer = ReplayBuffer()
-    fake_B_buffer = ReplayBuffer()
+    fake_a_buffer = ReplayBuffer()
+    fake_b_buffer = ReplayBuffer()
 
     transforms_ = [transforms.Resize(int(opt.size * 1.12), Image.BICUBIC),
                    transforms.RandomCrop(opt.size),
                    transforms.RandomHorizontalFlip(),
                    transforms.ToTensor(),
                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
-    dataloader = DataLoader(ImageDataset(opt.dataroot, transforms_=transforms_, unaligned=True), batch_size=opt.batchSize,
-                            shuffle=True, num_workers=opt.n_cpu)
+    dataloader = DataLoader(ImageDataset(opt.dataroot, transforms_=transforms_, unaligned=True),
+                            batch_size=opt.batchSize, shuffle=True, num_workers=opt.n_cpu)
 
     logger = Logger(opt.n_epochs, len(dataloader))
 
     for epoch in range(opt.epoch, opt.n_epochs):
         for i, batch in enumerate(dataloader):
-            real_A = Variable(input_A.copy_(batch['A']))
-            real_B = Variable(input_B.copy_(batch['B']))
+            real_a = Variable(input_a.copy_(batch['A']))
+            real_b = Variable(input_b.copy_(batch['B']))
 
-            optimizer_G.zero_grad()
+            optimizer_g.zero_grad()
 
-            same_B = netG_A2B(real_B)
-            loss_identity_B = criterion_identity(same_B, real_B) * 5.0
+            same_b = netg_a2b(real_b)
+            loss_identity_b = criterion_identity(same_b, real_b) * 5.0
 
-            same_A = netG_B2A(real_A)
-            loss_identity_A = criterion_identity(same_A, real_A) * 5.0
+            same_a = netg_b2a(real_a)
+            loss_identity_a = criterion_identity(same_a, real_a) * 5.0
 
-            fake_B = netG_A2B(real_A)
-            pred_fake = netD_B(fake_B)
-            loss_GAN_A2B = criterion_GAN(pred_fake, target_real)
+            fake_b = netg_a2b(real_a)
+            pred_fake = netd_b(fake_b)
+            loss_gan_a2b = criterion_gan(pred_fake, target_real)
 
-            fake_A = netG_B2A(real_B)
-            pred_fake = netD_A(fake_A)
-            loss_GAN_B2A = criterion_GAN(pred_fake, target_real)
+            fake_a = netg_b2a(real_b)
+            pred_fake = netd_a(fake_a)
+            loss_gan_b2a = criterion_gan(pred_fake, target_real)
 
-            recovered_A = netG_B2A(fake_B)
-            loss_cycle_ABA = criterion_cycle(recovered_A, real_A) * 10.0
+            recovered_a = netg_b2a(fake_b)
+            loss_cycle_aba = criterion_cycle(recovered_a, real_a) * 10.0
 
-            recovered_B = netG_A2B(fake_A)
-            loss_cycle_BAB = criterion_cycle(recovered_B, real_B) * 10.0
+            recovered_b = netg_a2b(fake_a)
+            loss_cycle_bab = criterion_cycle(recovered_b, real_b) * 10.0
 
-            loss_G = loss_identity_A + loss_identity_B + loss_GAN_A2B + loss_GAN_B2A + loss_cycle_ABA + loss_cycle_BAB
-            loss_G.backward()
+            loss_g = loss_identity_a + loss_identity_b + loss_gan_a2b + loss_gan_b2a + loss_cycle_aba + loss_cycle_bab
+            loss_g.backward()
 
-            optimizer_G.step()
+            optimizer_g.step()
 
-            optimizer_D_A.zero_grad()
+            optimizer_d_a.zero_grad()
 
-            pred_real = netD_A(real_A)
-            loss_D_real = criterion_GAN(pred_real, target_real)
+            pred_real = netd_a(real_a)
+            loss_d_real = criterion_gan(pred_real, target_real)
 
-            fake_A = fake_A_buffer.push_and_pop(fake_A)
-            pred_fake = netD_A(fake_A.detach())
-            loss_D_fake = criterion_GAN(pred_fake, target_fake)
+            fake_a = fake_a_buffer.push_and_pop(fake_a)
+            pred_fake = netd_a(fake_a.detach())
+            loss_d_fake = criterion_gan(pred_fake, target_fake)
 
-            loss_D_A = (loss_D_real + loss_D_fake) * 0.5
-            loss_D_A.backward()
+            loss_d_a = (loss_d_real + loss_d_fake) * 0.5
+            loss_d_a.backward()
 
-            optimizer_D_A.step()
+            optimizer_d_a.step()
 
-            optimizer_D_B.zero_grad()
+            optimizer_d_b.zero_grad()
 
-            pred_real = netD_B(real_B)
-            loss_D_real = criterion_GAN(pred_real, target_real)
+            pred_real = netd_b(real_b)
+            loss_d_real = criterion_gan(pred_real, target_real)
 
-            fake_B = fake_B_buffer.push_and_pop(fake_B)
-            pred_fake = netD_B(fake_B.detach())
-            loss_D_fake = criterion_GAN(pred_fake, target_fake)
+            fake_b = fake_b_buffer.push_and_pop(fake_b)
+            pred_fake = netd_b(fake_b.detach())
+            loss_d_fake = criterion_gan(pred_fake, target_fake)
 
-            loss_D_B = (loss_D_real + loss_D_fake) * 0.5
-            loss_D_B.backward()
+            loss_d_b = (loss_d_real + loss_d_fake) * 0.5
+            loss_d_b.backward()
 
-            optimizer_D_B.step()
+            optimizer_d_b.step()
 
-            logger.log({'loss_G': loss_G, 'loss_G_identity': (loss_identity_A + loss_identity_B),
-                        'loss_G_GAN': (loss_GAN_A2B + loss_GAN_B2A),
-                        'loss_G_cycle': (loss_cycle_ABA + loss_cycle_BAB), 'loss_D': (loss_D_A + loss_D_B)})
+            logger.log({'loss_g': loss_g, 'loss_g_identity': (loss_identity_a + loss_identity_b),
+                        'loss_g_gan': (loss_gan_a2b + loss_gan_b2a),
+                        'loss_g_cycle': (loss_cycle_aba + loss_cycle_bab), 'loss_d': (loss_d_a + loss_d_b)})
 
-        lr_scheduler_G.step()
-        lr_scheduler_D_A.step()
-        lr_scheduler_D_B.step()
+        lr_scheduler_g.step()
+        lr_scheduler_d_a.step()
+        lr_scheduler_d_b.step()
 
-        torch.save(netG_A2B.state_dict(), 'output/netG_A2B.pth')
-        torch.save(netG_B2A.state_dict(), 'output/netG_B2A.pth')
-        torch.save(netD_A.state_dict(), 'output/netD_A.pth')
-        torch.save(netD_B.state_dict(), 'output/netD_B.pth')
+        torch.save(netg_a2b.state_dict(), 'output/netg_a2b.pth')
+        torch.save(netg_b2a.state_dict(), 'output/netg_b2a.pth')
+        torch.save(netd_a.state_dict(), 'output/netd_a.pth')
+        torch.save(netd_b.state_dict(), 'output/netd_b.pth')
 
 
 def test(opt):
-    netG_A2B = Generator(opt.input_nc, opt.output_nc)
-    netG_B2A = Generator(opt.output_nc, opt.input_nc)
+    netg_a2b = Generator(opt.input_nc, opt.output_nc)
+    netg_b2a = Generator(opt.output_nc, opt.input_nc)
 
     if opt.cuda:
-        netG_A2B.cuda()
-        netG_B2A.cuda()
+        netg_a2b.cuda()
+        netg_b2a.cuda()
 
-    netG_A2B.load_state_dict(torch.load(opt.generator_A2B))
-    netG_B2A.load_state_dict(torch.load(opt.generator_B2A))
+    netg_a2b.load_state_dict(torch.load(opt.generator_A2B))
+    netg_b2a.load_state_dict(torch.load(opt.generator_B2A))
 
-    netG_A2B.eval()
-    netG_B2A.eval()
+    netg_a2b.eval()
+    netg_b2a.eval()
 
-    Tensor = torch.cuda.FloatTensor if opt.cuda else torch.Tensor
-    input_A = Tensor(opt.batchSize, opt.input_nc, opt.size, opt.size)
-    input_B = Tensor(opt.batchSize, opt.output_nc, opt.size, opt.size)
+    tensor = torch.cuda.FloatTensor if opt.cuda else torch.Tensor
+    input_a = tensor(opt.batchSize, opt.input_nc, opt.size, opt.size)
+    input_b = tensor(opt.batchSize, opt.output_nc, opt.size, opt.size)
 
-    transforms_ = [ transforms.ToTensor(),
-                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
-    dataloader = DataLoader(ImageDataset(opt.dataroot, transforms_=transforms_, mode='test'),
-                            batch_size=opt.batchSize, shuffle=False, num_workers=opt.n_cpu)
+    transforms_ = [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+    dataloader = DataLoader(ImageDataset(opt.dataroot, transforms_=transforms_, mode='test'), batch_size=opt.batchSize,
+                            shuffle=False, num_workers=opt.n_cpu)
 
     if not os.path.exists('output/A'):
         os.makedirs('output/A')
@@ -175,14 +180,14 @@ def test(opt):
         os.makedirs('output/B')
 
     for i, batch in enumerate(dataloader):
-        real_A = Variable(input_A.copy_(batch['A']))
-        real_B = Variable(input_B.copy_(batch['B']))
+        real_a = Variable(input_a.copy_(batch['A']))
+        real_b = Variable(input_b.copy_(batch['B']))
 
-        fake_B = 0.5*(netG_A2B(real_A).data + 1.0)
-        fake_A = 0.5*(netG_B2A(real_B).data + 1.0)
+        fake_b = 0.5*(netg_a2b(real_a).data + 1.0)
+        fake_a = 0.5*(netg_b2a(real_b).data + 1.0)
 
-        save_image(fake_A, 'output/A/%04d.png' % (i+1))
-        save_image(fake_B, 'output/B/%04d.png' % (i+1))
+        save_image(fake_a, 'output/A/%04d.png' % (i+1))
+        save_image(fake_b, 'output/B/%04d.png' % (i+1))
 
         sys.stdout.write('\rGenerated images %04d of %04d' % (i+1, len(dataloader)))
 
@@ -190,31 +195,24 @@ def test(opt):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', type=int, default=0, help='0=train, 1=test')
-
-    parser.add_argument('--epoch', type=int, default=0, help='starting epoch')
-    parser.add_argument('--n_epochs', type=int, default=200, help='number of epochs of training')
-    parser.add_argument('--batchSize', type=int, default=1, help='size of the batches')
-    parser.add_argument('--dataroot', type=str, default='dataset/', help='root directory of the dataset')
-    parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate')
-    parser.add_argument('--decay_epoch', type=int, default=100,
-                        help='epoch to start linearly decaying the learning rate to 0')
-    parser.add_argument('--size', type=int, default=256, help='size of the data crop (squared assumed)')
-    parser.add_argument('--input_nc', type=int, default=3, help='number of channels of dataset data')
-    parser.add_argument('--output_nc', type=int, default=3, help='number of channels of output data')
-    parser.add_argument('--cuda', type=bool, default=False, help='use GPU computation')
-    parser.add_argument('--n_cpu', type=int, default=8, help='number of cpu threads to use during batch generation')
-
-    parser.add_argument('--generator_A2B', type=str, default='output/netG_A2B.pth',
-                        help='A2B generator checkpoint file')
-    parser.add_argument('--generator_B2A', type=str, default='output/netG_B2A.pth',
-                        help='B2A generator checkpoint file')
-    main_opt = parser.parse_args()
-    print(main_opt)
+    main_opt = Options()
+    main_opt.mode = os.getenv('OPTIONS_MODE', 0)
+    main_opt.epoch = os.getenv('OPTIONS_EPOCH', 0)
+    main_opt.n_epochs = os.getenv('OPTIONS_N_EPOCHS', 200)
+    main_opt.batchSize = os.getenv('OPTIONS_BATCHSIZE', 1)
+    main_opt.dataroot = os.getenv('OPTIONS_MODE', '/dataset/')
+    main_opt.lr = os.getenv('OPTIONS_LEARNING_RATE', 0.0002)
+    main_opt.decay_epoch = os.getenv('OPTIONS_DECAY_EPOCH', 100)
+    main_opt.size = os.getenv('OPTIONS_CROP_SIZE', 256)
+    main_opt.input_nc = os.getenv('OPTIONS_INPUT_NC', 3)
+    main_opt.output_nc = os.getenv('OPTIONS_OUTPUT_NC', 3)
+    main_opt.cuda = os.getenv('OPTIONS_MODE', True)
+    main_opt.n_cpu = os.getenv('OPTIONS_N_CPU', 8)
+    main_opt.generator_A2B = os.getenv('OPTIONS_GENERATOR_A2B', '/output/netg_A2B.pth')
+    main_opt.generator_B2A = os.getenv('OPTIONS_GENERATOR_B2A', '/output/netg_B2A.pth')
 
     if torch.cuda.is_available() and not main_opt.cuda:
-        print("WARNING: You have a CUDA device, so you should probably run with --cuda")
+        print("WARNING: You have a CUDA device, so you should probably run with CUDA=True")
 
     if main_opt.mode == 0:
         train(main_opt)
