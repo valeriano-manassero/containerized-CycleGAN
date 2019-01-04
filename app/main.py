@@ -10,6 +10,8 @@ from PIL import Image
 import torch
 
 from options import Options
+from video import generate_frames
+from video import generate_video
 from models import Generator
 from models import Discriminator
 from utils import ReplayBuffer
@@ -26,7 +28,7 @@ def train(opt):
     netd_a = Discriminator(opt.input_nc)
     netd_b = Discriminator(opt.output_nc)
 
-    if opt.cuda:
+    if opt.cuda == 1:
         netg_a2b.cuda()
         netg_b2a.cuda()
         netd_a.cuda()
@@ -59,7 +61,7 @@ def train(opt):
                                                                             opt.epoch,
                                                                             opt.decay_epoch).step)
 
-    tensor = torch.cuda.FloatTensor if opt.cuda else torch.Tensor
+    tensor = torch.cuda.FloatTensor if opt.cuda == 1 else torch.Tensor
     input_a = tensor(opt.batchSize, opt.input_nc, opt.size, opt.size)
     input_b = tensor(opt.batchSize, opt.output_nc, opt.size, opt.size)
     target_real = Variable(tensor(opt.batchSize).fill_(1.0), requires_grad=False)
@@ -146,48 +148,35 @@ def train(opt):
         lr_scheduler_d_a.step()
         lr_scheduler_d_b.step()
 
-        torch.save(netg_a2b.state_dict(), '/output/netg_a2b.pth')
-        torch.save(netg_b2a.state_dict(), '/output/netg_b2a.pth')
-        torch.save(netd_a.state_dict(), '/output/netd_a.pth')
-        torch.save(netd_b.state_dict(), '/output/netd_b.pth')
+        torch.save(netg_a2b.state_dict(), '/output/net.pth')
 
 
-def test(opt):
+def generate(opt):
     netg_a2b = Generator(opt.input_nc, opt.output_nc)
-    netg_b2a = Generator(opt.output_nc, opt.input_nc)
 
-    if opt.cuda:
+    if opt.cuda == 1:
         netg_a2b.cuda()
-        netg_b2a.cuda()
 
-    netg_a2b.load_state_dict(torch.load('/output/netg_A2B.pth'))
-    netg_b2a.load_state_dict(torch.load('/output/netg_B2A.pth'))
+    netg_a2b.load_state_dict(torch.load('/output/net.pth'))
 
     netg_a2b.eval()
-    netg_b2a.eval()
 
-    tensor = torch.cuda.FloatTensor if opt.cuda else torch.Tensor
+    tensor = torch.cuda.FloatTensor if opt.cuda == 1 else torch.Tensor
     input_a = tensor(opt.batchSize, opt.input_nc, opt.size, opt.size)
-    input_b = tensor(opt.batchSize, opt.output_nc, opt.size, opt.size)
 
     transforms_ = [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
-    dataloader = DataLoader(ImageDataset(opt.dataroot, transforms_=transforms_, mode='test'), batch_size=opt.batchSize,
+    dataloader = DataLoader(ImageDataset(opt.dataroot, transforms_=transforms_), batch_size=opt.batchSize,
                             shuffle=False, num_workers=opt.n_cpu)
 
-    if not os.path.exists('/output/A'):
-        os.makedirs('/output/A')
-    if not os.path.exists('/output/B'):
-        os.makedirs('/output/B')
+    if not os.path.exists('/output/result'):
+        os.makedirs('/output/result')
 
     for i, batch in enumerate(dataloader):
         real_a = Variable(input_a.copy_(batch['A']))
-        real_b = Variable(input_b.copy_(batch['B']))
 
         fake_b = 0.5*(netg_a2b(real_a).data + 1.0)
-        fake_a = 0.5*(netg_b2a(real_b).data + 1.0)
 
-        save_image(fake_a, '/output/A/%04d.png' % (i+1))
-        save_image(fake_b, '/output/B/%04d.png' % (i+1))
+        save_image(fake_b, '/output/result/%04d.png' % (i+1))
 
         sys.stdout.write('\rGenerated images %04d of %04d' % (i+1, len(dataloader)))
 
@@ -206,15 +195,25 @@ if __name__ == "__main__":
     main_opt.size = int(os.getenv('OPTIONS_CROP_SIZE', 256))
     main_opt.input_nc = int(os.getenv('OPTIONS_INPUT_NC', 3))
     main_opt.output_nc = int(os.getenv('OPTIONS_OUTPUT_NC', 3))
-    main_opt.cuda = bool(os.getenv('OPTIONS_CUDA', 1))
+    main_opt.cuda = int(os.getenv('OPTIONS_CUDA', 1))
     main_opt.n_cpu = int(os.getenv('OPTIONS_N_CPU', 8))
 
-    if torch.cuda.is_available() and not main_opt.cuda:
-        print("WARNING: You have a CUDA device, so you should probably run with CUDA=True")
+    if torch.cuda.is_available() and main_opt.cuda == 0:
+        print("WARNING: You have a CUDA device, so you should probably run with CUDA=1")
 
     if main_opt.mode == 0:
+        generate_frames(['A', 'B'])
         train(main_opt)
     elif main_opt.mode == 1:
-        test(main_opt)
+        if os.path.exists('/output/result'):
+            for root, dirs, files in os.walk('/output/result', topdown=False):
+                for name in files:
+                    os.remove(os.path.join(root, name))
+                for name in dirs:
+                    os.rmdir(os.path.join(root, name))
+        else:
+            os.makedirs('/output/result')
+        generate(main_opt)
+        generate_video()
     else:
         print("ERROR: Unknown mode, exiting")
