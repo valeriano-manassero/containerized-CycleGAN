@@ -4,7 +4,7 @@ COPY ./app /app
 WORKDIR /app
 
 RUN apt update && \
-    apt install -y curl python3-minimal && \
+    apt install -y curl python3-minimal libsm6 libxext6 libfontconfig1 libxrender1 libglib2.0-0 && \
     apt clean
 
 RUN curl https://bootstrap.pypa.io/get-pip.py | python3 && \
