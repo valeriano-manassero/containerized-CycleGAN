@@ -14,7 +14,7 @@ services:
       - OPTIONS_CROP_SIZE=256
       - OPTIONS_INPUT_NC=3
       - OPTIONS_OUTPUT_NC=3
-      - OPTIONS_CUDA=True
+      - OPTIONS_CUDA=1
       - OPTIONS_N_CPU=8
     volumes:
       - ./app:/app
