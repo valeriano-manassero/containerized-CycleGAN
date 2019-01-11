@@ -202,9 +202,10 @@ if __name__ == "__main__":
         print("WARNING: You have a CUDA device, so you should probably run with CUDA=1")
 
     if main_opt.mode == 0:
-        generate_frames(['A', 'B'])
+        generate_frames(['A', 'B'], True)
         train(main_opt)
     elif main_opt.mode == 1:
+        generate_frames(['A', 'B'], False)
         if os.path.exists('/output/result'):
             for root, dirs, files in os.walk('/output/result', topdown=False):
                 for name in files:
