@@ -5,7 +5,7 @@ import cv2
 SIZE = 256
 
 
-def generate_frames(prefixes):
+def generate_frames(prefixes, augmentation):
     if os.path.exists('/dataset/frames'):
         for root, dirs, files in os.walk('/dataset/frames', topdown=False):
             for name in files:
@@ -24,6 +24,9 @@ def generate_frames(prefixes):
                 resize = cv2.resize(image, (SIZE, SIZE))
                 cv2.imwrite('/dataset/frames/' + prefix + '/%05d.jpg' % count, resize)
                 count += 1
+                if augmentation:
+                    flip = cv2.flip(resize, 1)
+                    cv2.imwrite('/dataset/frames/' + prefix + '/%05d_f.jpg' % count, flip)
             else:
                 break
 
